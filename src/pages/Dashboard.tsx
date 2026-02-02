@@ -13,19 +13,15 @@ import {
   Clock,
   CheckCircle,
   XCircle,
-  Activity,
 } from 'lucide-react';
 import { APP_CONFIG, STATUS_CONFIG } from '@/config/appConfig';
-import { DashboardStats, EntityLifecycle } from '@/types';
-import {
-  fetchDashboardStats,
-  fetchEntityLifecycle,
-} from '@/services/dashboardService';
+import { EntityDetails } from '@/types';
+import { fetchLogs } from '@/services/logService';
+import { parseLogs, ParsedDashboardResult } from '@/services/logParser';
 import { formatDuration, formatNumber } from '@/utils/formatters';
 import { StatWidget } from '@/components/dashboard/StatWidget';
 import { LifecycleChart } from '@/components/dashboard/LifecycleChart';
 import { EntityDetailsTable } from '@/components/dashboard/EntityDetailsTable';
-import { getMockEntityDetails } from '@/mockData/entityDetails';
 import { cn } from '@/lib/utils';
 
 /**
@@ -38,12 +34,12 @@ const Dashboard = () => {
   // Redirect to default testcase if none specified
   const currentTestcaseId = testcaseId || APP_CONFIG.defaultTestcaseId;
   
-  // State for dashboard data
-  const [stats, setStats] = useState<DashboardStats | null>(null);
-  const [lifecycle, setLifecycle] = useState<EntityLifecycle[]>([]);
+  // State for parsed dashboard data
+  const [entityDetails, setEntityDetails] = useState<EntityDetails | null>(null);
+  const [parsedResult, setParsedResult] = useState<ParsedDashboardResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch dashboard data when testcaseId changes
+  // Fetch and parse logs when testcaseId changes
   useEffect(() => {
     if (!testcaseId) {
       navigate(`/dashboard/${APP_CONFIG.defaultTestcaseId}`, { replace: true });
@@ -53,14 +49,24 @@ const Dashboard = () => {
     const loadDashboardData = async () => {
       setIsLoading(true);
       try {
-        // TODO: Replace with actual API calls
-        const [statsRes, lifecycleRes] = await Promise.all([
-          fetchDashboardStats(currentTestcaseId),
-          fetchEntityLifecycle(currentTestcaseId),
-        ]);
+        // Fetch raw logs
+        const logsRes = await fetchLogs(currentTestcaseId);
         
-        setStats(statsRes.data);
-        setLifecycle(lifecycleRes.data);
+        if (!logsRes.data || logsRes.data.length === 0) {
+          console.warn('No logs found for testcase:', currentTestcaseId);
+          setIsLoading(false);
+          return;
+        }
+
+        // Parse logs on frontend
+        const result = parseLogs(logsRes.data);
+        
+        if (result) {
+          setParsedResult(result);
+          setEntityDetails(result.entityDetails);
+        } else {
+          console.warn('Failed to parse logs');
+        }
       } catch (error) {
         console.error('Failed to load dashboard data:', error);
       } finally {
@@ -73,9 +79,19 @@ const Dashboard = () => {
 
   // Get status icon and styling
   const getStatusDisplay = () => {
-    if (!stats) return null;
-    const config = STATUS_CONFIG[stats.testcaseStatus];
-    const Icon = stats.testcaseStatus === 'PASSED' ? CheckCircle : XCircle;
+    if (!parsedResult?.syncStatusList || parsedResult.syncStatusList.length === 0) {
+      return null;
+    }
+
+    // Derive status from sync results
+    const hasErrors = parsedResult.syncStatusList.some(s => 
+      s.transformedEventXML.includes('error') || 
+      s.transformedEventXML.includes('failed')
+    );
+    
+    const status = hasErrors ? 'FAILED' : 'PASSED';
+    const config = STATUS_CONFIG[status];
+    const Icon = status === 'PASSED' ? CheckCircle : XCircle;
     
     return (
       <div className={cn('flex items-center gap-2', config.className)}>
@@ -84,6 +100,23 @@ const Dashboard = () => {
       </div>
     );
   };
+
+  // Calculate stats from parsed data
+  const stats = parsedResult ? {
+    totalLogs: parsedResult.syncStatusList.length,
+    successfulSyncs: parsedResult.syncStatusList.filter(s => 
+      !s.transformedEventXML.includes('error') && 
+      !s.transformedEventXML.includes('failed')
+    ).length,
+    failedSyncs: parsedResult.syncStatusList.filter(s => 
+      s.transformedEventXML.includes('error') || 
+      s.transformedEventXML.includes('failed')
+    ).length,
+    executionDuration: parsedResult.syncStatusList.length > 0 
+      ? new Date(parsedResult.syncStatusList[parsedResult.syncStatusList.length - 1].finishedSyncTime).getTime() -
+        new Date(parsedResult.syncStatusList[0].startSyncTime).getTime()
+      : 0,
+  } : null;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -96,7 +129,7 @@ const Dashboard = () => {
             <span className="font-mono text-primary">{currentTestcaseId}</span>
           </p>
         </div>
-        {stats && (
+        {parsedResult && (
           <div className="flex items-center gap-4">
             {getStatusDisplay()}
           </div>
@@ -106,32 +139,32 @@ const Dashboard = () => {
       {/* Summary Widgets */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatWidget
-          title="Total Logs"
+          title="Total Syncs"
           value={stats ? formatNumber(stats.totalLogs) : '—'}
           icon={FileText}
           variant="info"
-          subtitle="All log entries"
+          subtitle="Sync operations"
         />
         <StatWidget
-          title="Errors"
-          value={stats ? formatNumber(stats.errorCount) : '—'}
+          title="Successful"
+          value={stats ? formatNumber(stats.successfulSyncs) : '—'}
+          icon={CheckCircle}
+          variant="default"
+          subtitle="Completed syncs"
+        />
+        <StatWidget
+          title="Failed"
+          value={stats ? formatNumber(stats.failedSyncs) : '—'}
           icon={AlertCircle}
           variant="error"
-          subtitle="Critical issues"
+          subtitle="Failed syncs"
         />
         <StatWidget
-          title="Warnings"
-          value={stats ? formatNumber(stats.warnCount) : '—'}
-          icon={AlertTriangle}
-          variant="warning"
-          subtitle="Attention needed"
-        />
-        <StatWidget
-          title="Info Logs"
-          value={stats ? formatNumber(stats.infoCount) : '—'}
+          title="Success Rate"
+          value={stats && stats.totalLogs > 0 ? `${Math.round((stats.successfulSyncs / stats.totalLogs) * 100)}%` : '—'}
           icon={Info}
           variant="default"
-          subtitle="Informational"
+          subtitle="Overall success"
         />
         <StatWidget
           title="Duration"
@@ -142,11 +175,16 @@ const Dashboard = () => {
         />
       </div>
 
-      {/* Lifecycle Chart */}
-      <LifecycleChart data={lifecycle} isLoading={isLoading} />
+      {/* Lifecycle Chart - No longer needed with parsed data */}
+      {/* Chart will be updated to show sync timeline from parsedResult */}
 
-      {/* Entity Details Table */}
-      <EntityDetailsTable entityDetails={getMockEntityDetails()} />
+      {/* Entity Details Table - Now fed by parsed data */}
+      {entityDetails && <EntityDetailsTable entityDetails={entityDetails} />}
+      {!entityDetails && !isLoading && (
+        <div className="text-center py-8 text-muted-foreground">
+          No sync data found in logs for this testcase.
+        </div>
+      )}
     </div>
   );
 };
