@@ -79,15 +79,12 @@ const Dashboard = () => {
 
   // Get status icon and styling
   const getStatusDisplay = () => {
-    if (!parsedResult?.syncStatusList || parsedResult.syncStatusList.length === 0) {
+    if (!parsedResult?.widgetMetrics) {
       return null;
     }
 
-    // Derive status from sync results
-    const hasErrors = parsedResult.syncStatusList.some(s => 
-      s.transformedEventXML.includes('error') || 
-      s.transformedEventXML.includes('failed')
-    );
+    // Status is FAILED if there are error level logs (including "Test Invocation Failure")
+    const hasErrors = parsedResult.widgetMetrics.errorLevelLogsCount > 0;
     
     const status = hasErrors ? 'FAILED' : 'PASSED';
     const config = STATUS_CONFIG[status];
@@ -102,20 +99,12 @@ const Dashboard = () => {
   };
 
   // Calculate stats from parsed data
-  const stats = parsedResult ? {
-    totalLogs: parsedResult.syncStatusList.length,
-    successfulSyncs: parsedResult.syncStatusList.filter(s => 
-      !s.transformedEventXML.includes('error') && 
-      !s.transformedEventXML.includes('failed')
-    ).length,
-    failedSyncs: parsedResult.syncStatusList.filter(s => 
-      s.transformedEventXML.includes('error') || 
-      s.transformedEventXML.includes('failed')
-    ).length,
-    executionDuration: parsedResult.syncStatusList.length > 0 
-      ? new Date(parsedResult.syncStatusList[parsedResult.syncStatusList.length - 1].finishedSyncTime).getTime() -
-        new Date(parsedResult.syncStatusList[0].startSyncTime).getTime()
-      : 0,
+  const stats = parsedResult?.widgetMetrics ? {
+    totalSyncs: parsedResult.widgetMetrics.totalSyncs,
+    successfulSyncs: parsedResult.widgetMetrics.successfulSyncs,
+    failedSyncs: parsedResult.widgetMetrics.failedSyncs,
+    errorLevelLogsCount: parsedResult.widgetMetrics.errorLevelLogsCount,
+    executionDuration: parsedResult.widgetMetrics.executionTimeMs,
   } : null;
 
   return (
@@ -140,7 +129,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatWidget
           title="Total Syncs"
-          value={stats ? formatNumber(stats.totalLogs) : '—'}
+          value={stats ? formatNumber(stats.totalSyncs) : '—'}
           icon={FileText}
           variant="info"
           subtitle="Sync operations"
@@ -160,11 +149,11 @@ const Dashboard = () => {
           subtitle="Failed syncs"
         />
         <StatWidget
-          title="Success Rate"
-          value={stats && stats.totalLogs > 0 ? `${Math.round((stats.successfulSyncs / stats.totalLogs) * 100)}%` : '—'}
-          icon={Info}
-          variant="default"
-          subtitle="Overall success"
+          title="Error Logs"
+          value={stats ? formatNumber(stats.errorLevelLogsCount) : '—'}
+          icon={AlertTriangle}
+          variant="error"
+          subtitle="Error level logs"
         />
         <StatWidget
           title="Duration"

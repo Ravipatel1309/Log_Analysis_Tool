@@ -8,8 +8,10 @@ export const mockEntityDetails: EntityDetails = {
   sourceEntityId: '5223407',
   sourceSystem: 'CA PPM',
   sourceEntityType: 'Task',
+  sourceProject: 'PPM_Project_A',
   targetSystem: 'Jira',
   targetEntityType: 'Issue',
+  targetProject: 'JIRA_Project_B',
   targetEntityId: 'PROJ-1234',
   entityCreationTime: '2026-01-29 23:30:17.828+05:30',
   syncStatusList: [

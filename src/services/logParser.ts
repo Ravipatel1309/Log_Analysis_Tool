@@ -37,12 +37,24 @@ interface ActiveSync {
 }
 
 /**
+ * Widget metrics for dashboard
+ */
+export interface WidgetMetrics {
+  totalSyncs: number;
+  successfulSyncs: number;
+  failedSyncs: number;
+  errorLevelLogsCount: number;
+  executionTimeMs: number;
+}
+
+/**
  * Final parsed result
  */
 export interface ParsedDashboardResult {
   entityContext: EntityContext;
   entityDetails: EntityDetails;
   syncStatusList: SyncStatus[];
+  widgetMetrics: WidgetMetrics;
 }
 
 /**
@@ -91,10 +103,14 @@ export class LogParser {
     // Build entity details
     const entityDetails = this.buildEntityDetails();
 
+    // Calculate widget metrics
+    const widgetMetrics = this.calculateWidgetMetrics();
+
     return {
       entityContext: this.entityContext,
       entityDetails,
       syncStatusList: this.completedSyncs,
+      widgetMetrics,
     };
   }
 
@@ -363,11 +379,77 @@ export class LogParser {
       sourceEntityId: earliestSync?.sourceEntityId || 'UNKNOWN',
       sourceSystem: ctx.sourceSystem,
       sourceEntityType: ctx.sourceEntity,
+      sourceProject: ctx.sourceProject,
       targetSystem: ctx.targetSystem,
       targetEntityType: ctx.targetEntity,
+      targetProject: ctx.targetProject,
       targetEntityId: earliestSync?.targetEntityId || 'UNKNOWN',
       entityCreationTime: earliestSync?.startSyncTime || new Date().toISOString(),
       syncStatusList: this.completedSyncs,
+    };
+  }
+
+  /**
+   * Calculate widget metrics from logs
+   * - Total Syncs: Count of "Start Synchronizing" logs
+   * - Successful: Syncs with "Finished Synchronizing" before next "Start Synchronizing"
+   * - Failed: Syncs without "Finished Synchronizing" before next "Start Synchronizing"
+   * - Error Count: Count of ERROR level logs
+   * - Execution Time: From first log to last log
+   */
+  private calculateWidgetMetrics(): WidgetMetrics {
+    // Count "Start Synchronizing" logs
+    const startSyncLogs = this.logs.filter(log =>
+      log.message.includes('Start synchronizing of Entity Id') ||
+      log.message.includes('Starting sync for')
+    );
+    const totalSyncs = startSyncLogs.length;
+
+    // Find corresponding "Finished Synchronizing" for each start
+    const syncPairs = new Map<number, { start: number; finish?: number }>();
+    
+    startSyncLogs.forEach((startLog, idx) => {
+      const startIdx = this.logs.indexOf(startLog);
+      const nextStartIdx = idx < startSyncLogs.length - 1 
+        ? this.logs.indexOf(startSyncLogs[idx + 1])
+        : this.logs.length;
+
+      // Look for finished sync between start and next start
+      const finishedLog = this.logs
+        .slice(startIdx + 1, nextStartIdx)
+        .find(log =>
+          log.message.includes('Finished synchronizing of Entity Id') ||
+          log.message.includes('Sync completed for')
+        );
+
+      syncPairs.set(startIdx, {
+        start: startIdx,
+        finish: finishedLog ? this.logs.indexOf(finishedLog) : undefined,
+      });
+    });
+
+    // Count successful (with finish) and failed (without finish)
+    const successfulSyncs = Array.from(syncPairs.values()).filter(pair => pair.finish !== undefined).length;
+    const failedSyncs = Array.from(syncPairs.values()).filter(pair => pair.finish === undefined).length;
+
+    // Count ERROR level logs
+    const errorLevelLogsCount = this.logs.filter(log =>
+      log.message.includes('ERROR') || 
+      log.message.includes('Test Invocation Failure')
+    ).length;
+
+    // Calculate execution time (first log to last log)
+    const executionTimeMs = this.logs.length > 0
+      ? new Date(this.logs[this.logs.length - 1].timeStamp).getTime() -
+        new Date(this.logs[0].timeStamp).getTime()
+      : 0;
+
+    return {
+      totalSyncs,
+      successfulSyncs,
+      failedSyncs,
+      errorLevelLogsCount,
+      executionTimeMs,
     };
   }
 }

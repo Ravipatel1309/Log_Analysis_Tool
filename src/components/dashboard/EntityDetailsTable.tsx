@@ -51,8 +51,10 @@ export function EntityDetailsTable({ entityDetails }: EntityDetailsTableProps) {
             <TableRow className="hover:bg-transparent border-border">
               <TableHead className="text-foreground font-semibold">Source System</TableHead>
               <TableHead className="text-foreground font-semibold">Source Entity Type</TableHead>
+              <TableHead className="text-foreground font-semibold">Source Project</TableHead>
               <TableHead className="text-foreground font-semibold">Target System</TableHead>
               <TableHead className="text-foreground font-semibold">Target Entity Type</TableHead>
+              <TableHead className="text-foreground font-semibold">Target Project</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -65,12 +67,22 @@ export function EntityDetailsTable({ entityDetails }: EntityDetailsTableProps) {
                   {entityDetails.sourceEntityType}
                 </Badge>
               </TableCell>
+              <TableCell className="py-4">
+                <Badge variant="secondary" className="bg-cyan-500/20 text-cyan-400 border-cyan-500/30">
+                  {entityDetails.sourceProject}
+                </Badge>
+              </TableCell>
               <TableCell className="font-semibold text-foreground py-4">
                 {entityDetails.targetSystem}
               </TableCell>
               <TableCell className="py-4">
                 <Badge variant="secondary" className="bg-purple-500/20 text-purple-400 border-purple-500/30">
                   {entityDetails.targetEntityType}
+                </Badge>
+              </TableCell>
+              <TableCell className="py-4">
+                <Badge variant="secondary" className="bg-amber-500/20 text-amber-400 border-amber-500/30">
+                  {entityDetails.targetProject}
                 </Badge>
               </TableCell>
             </TableRow>

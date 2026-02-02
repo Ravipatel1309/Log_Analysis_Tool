@@ -103,8 +103,10 @@ export interface EntityDetails {
   sourceEntityId: string;        // Source entity ID
   sourceSystem: string;          // Source system name
   sourceEntityType: string;      // Source entity type
+  sourceProject: string;         // Source project name
   targetSystem: string;          // Target system name
   targetEntityType: string;      // Target entity type
+  targetProject: string;         // Target project name
   targetEntityId: string;        // Target entity ID
   entityCreationTime: string;    // Creation timestamp
   syncStatusList: SyncStatus[];
