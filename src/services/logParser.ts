@@ -29,6 +29,7 @@ interface ActiveSync {
   revisionId: number;
   ei: string;
   startSyncTime: string;
+  finishedSyncTime?: string;
   internalId?: string;
   displayId?: string;
   sourceEventXML?: string;

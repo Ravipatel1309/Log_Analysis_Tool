@@ -4,8 +4,8 @@
  * This guide shows how to test the log parser with various scenarios
  */
 
-import { parseLogs } from '@/src/services/logParser';
-import { getTestLogsByScenario } from '@/src/mockData/testLogs';
+import { parseLogs } from '@/services/logParser';
+import { getTestLogsByScenario } from '@/mockData/testLogs';
 
 /**
  * SCENARIO 1: Complete successful sync
