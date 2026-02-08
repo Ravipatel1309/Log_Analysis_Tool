@@ -1,6 +1,8 @@
 /**
- * XMLViewerModal - Modal dialog for viewing XML content
- * Displays formatted XML with syntax highlighting
+ * XMLViewerModal - Safe XML viewer
+ * - No innerHTML
+ * - No regex highlighting
+ * - No XML corruption
  */
 
 import {
@@ -12,7 +14,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Copy, Check } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
 interface XMLViewerModalProps {
@@ -22,9 +24,6 @@ interface XMLViewerModalProps {
   xmlContent: string;
 }
 
-/**
- * Modal for displaying XML content with copy functionality
- */
 export const XMLViewerModal = ({
   isOpen,
   onClose,
@@ -40,61 +39,76 @@ export const XMLViewerModal = ({
       setCopied(true);
       toast({
         title: 'Copied!',
-        description: 'XML content copied to clipboard',
+        description: 'Raw XML copied to clipboard',
       });
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
+    } catch {
       toast({
         title: 'Failed to copy',
-        description: 'Could not copy to clipboard',
+        description: 'Could not copy XML',
         variant: 'destructive',
       });
     }
   };
 
-  // Simple XML syntax highlighting
-  const highlightXML = (xml: string) => {
-    return xml
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/(&lt;\/?[\w:-]+)/g, '<span class="text-log-info">$1</span>')
-      .replace(/(&gt;)/g, '<span class="text-log-info">$1</span>')
-      .replace(/([\w:-]+)=/g, '<span class="text-log-warn">$1</span>=')
-      .replace(/"([^"]*)"/g, '<span class="text-status-success">"$1"</span>');
-  };
+  /**
+   * Safe XML pretty formatter
+   * (text-only, no HTML injection)
+   */
+  const formattedXML = useMemo(() => {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlContent, 'application/xml');
+
+      if (doc.getElementsByTagName('parsererror').length) {
+        return xmlContent; // invalid XML → show raw
+      }
+
+      const serializer = new XMLSerializer();
+      const raw = serializer.serializeToString(doc);
+
+      let indent = 0;
+      return raw
+        .replace(/(>)(<)(\/*)/g, '$1\n$2$3')
+        .split('\n')
+        .map((line) => {
+          if (/^<\/\w/.test(line)) indent--;
+          const padded = '  '.repeat(Math.max(indent, 0)) + line;
+          if (/^<\w[^>]*[^\/]>$/.test(line)) indent++;
+          return padded;
+        })
+        .join('\n');
+    } catch {
+      return xmlContent;
+    }
+  }, [xmlContent]);
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col">
-        <DialogHeader className="flex-shrink-0">
+      <DialogContent className="max-w-5xl h-[85vh] flex flex-col">
+        <DialogHeader>
           <div className="flex items-center justify-between">
             <DialogTitle>{title}</DialogTitle>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleCopy}
-              className="gap-2"
-            >
+            <Button variant="outline" size="sm" onClick={handleCopy}>
               {copied ? (
                 <>
-                  <Check className="h-4 w-4" />
+                  <Check className="h-4 w-4 mr-1" />
                   Copied
                 </>
               ) : (
                 <>
-                  <Copy className="h-4 w-4" />
+                  <Copy className="h-4 w-4 mr-1" />
                   Copy
                 </>
               )}
             </Button>
           </div>
         </DialogHeader>
-        <ScrollArea className="flex-1 mt-4 rounded-lg bg-muted/50 border">
-          <pre
-            className="p-4 xml-viewer text-sm leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: highlightXML(xmlContent) }}
-          />
+
+        <ScrollArea className="flex-1 mt-4 rounded-lg border bg-muted">
+          <pre className="p-4 text-sm font-mono whitespace-pre overflow-x-auto">
+            {formattedXML}
+          </pre>
         </ScrollArea>
       </DialogContent>
     </Dialog>
